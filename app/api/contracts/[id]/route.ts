@@ -34,7 +34,7 @@ function mapContractToApi(c: Awaited<ReturnType<typeof getContractById>>) {
     riskScore: c.riskScore,
     riskLevel: c.riskLevel,
     value: c.value,
-    tags: c.tags,
+    tags: Array.isArray(c.tags) ? (c.tags as string[]) : [],
     uploadedAt: c.uploadedAt.toISOString(),
     lastAnalyzedAt: c.lastAnalyzedAt?.toISOString() ?? null,
     documentId: c.latestDocument?.id ?? null,
@@ -131,7 +131,7 @@ export async function PATCH(
   if (parsed.data.riskScore !== undefined) data.riskScore = parsed.data.riskScore;
   if (parsed.data.riskLevel !== undefined) data.riskLevel = RISK_MAP[parsed.data.riskLevel];
   if (parsed.data.value !== undefined) data.value = parsed.data.value;
-  if (parsed.data.tags !== undefined) data.tags = parsed.data.tags;
+  if (parsed.data.tags !== undefined) data.tags = parsed.data.tags as unknown;
   if (parsed.data.contractName !== undefined) data.contractName = parsed.data.contractName;
   if (parsed.data.effectiveDate !== undefined) data.effectiveDate = new Date(parsed.data.effectiveDate);
   if (parsed.data.expiryDate !== undefined) data.expiryDate = new Date(parsed.data.expiryDate);

@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -94,13 +94,13 @@ model Contract {
   supplier       Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   contractName   String
   contractType   ContractType
-  effectiveDate  DateTime       @db.Date
-  expiryDate     DateTime       @db.Date
+  effectiveDate  DateTime
+  expiryDate     DateTime
   status         ContractStatus @default(active)
   riskScore      Int            @default(0)
   riskLevel      RiskLevel      @default(low)
   value          Float          @default(0)
-  tags           String[]       @default([])
+  tags           Json           @default("[]")
   uploadedAt     DateTime       @default(now())
   lastAnalyzedAt DateTime?
   createdAt      DateTime       @default(now())
@@ -163,7 +163,7 @@ model ContractVersion {
   document       ContractDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   versionNumber  Int               @default(1)
   processingStatus ProcessingStatus @default(PENDING)
-  extractedText  String?           @db.Text
+  extractedText  String?
   extractedData  Json?             // Flexible: renewalTerms, paymentTerms, deliverables, etc.
   createdAt      DateTime         @default(now())
   clauses        Clause[]
@@ -187,9 +187,9 @@ model Clause {
   version       ContractVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   name          String
   category      String
-  extractedText String         @db.Text
-  interpretation String?       @db.Text
-  riskNotes     String?        @db.Text
+  extractedText String
+  interpretation String?
+  riskNotes     String?
   pageRef       String?
   sortOrder     Int            @default(0)
   createdAt     DateTime       @default(now())
@@ -202,9 +202,9 @@ model Obligation {
   id           String           @id @default(cuid())
   versionId    String
   version      ContractVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  obligation   String           @db.Text
+  obligation   String
   owner        ObligationOwner
-  dueDate      DateTime?        @db.Date
+  dueDate      DateTime?
   status       ObligationStatus @default(pending)
   evidenceLink String?
   sortOrder    Int              @default(0)
@@ -234,7 +234,7 @@ model ActivityEvent {
   userId     String?
   user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   action     ActivityAction
-  details    String        @db.Text
+  details    String
   metadata   Json?         // Optional extra data
   createdAt  DateTime      @default(now())
 

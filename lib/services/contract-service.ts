@@ -42,10 +42,10 @@ export async function getContractList(filters: ContractListFilters = {}) {
   const where: Record<string, unknown> = {};
 
   if (search?.trim()) {
-    const q = `%${search.trim().toLowerCase()}%`;
+    const q = search.trim();
     where.OR = [
-      { contractName: { contains: search.trim(), mode: "insensitive" } },
-      { supplier: { name: { contains: search.trim(), mode: "insensitive" } } },
+      { contractName: { contains: q } },
+      { supplier: { name: { contains: q } } },
     ];
   }
   if (contractType) where.contractType = contractType;

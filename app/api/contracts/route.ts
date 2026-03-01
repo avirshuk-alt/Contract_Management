@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     riskScore: c.riskScore,
     riskLevel: c.riskLevel,
     value: c.value,
-    tags: c.tags,
+    tags: Array.isArray(c.tags) ? (c.tags as string[]) : [],
     uploadedAt: c.uploadedAt.toISOString(),
     lastAnalyzedAt: c.lastAnalyzedAt?.toISOString() ?? null,
   }));
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
   }
 
   let supplier = await prisma.supplier.findFirst({
-    where: { name: { equals: parsed.data.supplierName, mode: "insensitive" } },
+    where: { name: parsed.data.supplierName },
   });
   if (!supplier) {
     supplier = await prisma.supplier.create({
