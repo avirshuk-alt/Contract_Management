@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { runMROExtractionStub } from "@/lib/services/mro-extraction";
+import { runMROExtraction } from "@/lib/services/mro-extraction";
 
 /**
- * Stub extraction endpoint. Populates contract.extraction with schema shape but null values.
- * No LLM integration yet. POST to trigger stub run and return the new payload.
+ * Extraction endpoint. Runs MRO extraction (LLM when API key is set, otherwise stub).
+ * POST to trigger extraction and return the payload.
  */
 export async function POST(
   _req: Request,
@@ -13,7 +13,7 @@ export async function POST(
   await auth();
   const { id } = await params;
   try {
-    const payload = await runMROExtractionStub(id);
+    const payload = await runMROExtraction(id);
     return NextResponse.json(payload);
   } catch (e) {
     return NextResponse.json(

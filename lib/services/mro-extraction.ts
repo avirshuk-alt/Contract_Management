@@ -1,10 +1,10 @@
 /**
- * MRO Extraction: stub pipeline + opportunity engine.
- * No LLM yet; returns empty/"not extracted" payload and rules-based opportunities.
- * TODO: Replace stub with LLM call using extraction instructions from lib/types/extraction.ts
+ * MRO Extraction: LLM-powered pipeline with stub fallback.
+ * Uses llm-extraction when OPENAI_API_KEY is set and contract has extracted text.
  */
 
 import { prisma } from "@/lib/db";
+import { extractWithLlm, hasLlmExtractionConfigured } from "@/lib/services/llm-extraction";
 import type { Prisma } from "@prisma/client";
 import type {
   ContractExtractionPayload,
@@ -329,7 +329,60 @@ export async function runMROExtractionStub(contractId: string): Promise<Contract
 }
 
 /**
- * Get persisted extraction for a contract. If missing, run stub and persist then return.
+ * Run MRO extraction: use LLM when API key is set and contract has extracted text; otherwise stub.
+ */
+export async function runMROExtraction(contractId: string): Promise<ContractExtractionPayload | null> {
+  const contract = await prisma.contract.findUnique({
+    where: { id: contractId },
+    select: {
+      id: true,
+      effectiveDate: true,
+      expiryDate: true,
+      documents: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          versions: {
+            orderBy: { versionNumber: "desc" },
+            take: 1,
+            select: { extractedText: true },
+          },
+        },
+      },
+    },
+  });
+  if (!contract) return null;
+
+  const version = contract.documents[0]?.versions[0];
+  const extractedText = version?.extractedText ?? null;
+  const metadata = {
+    effectiveDate: contract.effectiveDate.toISOString().slice(0, 10),
+    expiryDate: contract.expiryDate.toISOString().slice(0, 10),
+  };
+
+  if (extractedText && hasLlmExtractionConfigured()) {
+    const llmPayload = await extractWithLlm(extractedText, metadata);
+    if (llmPayload) {
+      const expiryIso = metadata.expiryDate;
+      llmPayload.opportunities = runOpportunityEngine(llmPayload, expiryIso);
+
+      const parsed = contractExtractionPayloadSchema.safeParse(llmPayload);
+      if (parsed.success) {
+        const toStore = parsed.data as unknown as Prisma.InputJsonValue;
+        await prisma.contract.update({
+          where: { id: contractId },
+          data: { extraction: toStore } as Prisma.ContractUpdateInput,
+        });
+        return parsed.data;
+      }
+    }
+  }
+
+  return runMROExtractionStub(contractId);
+}
+
+/**
+ * Get persisted extraction for a contract. If missing, run MRO extraction (LLM or stub) and persist.
  */
 export async function getOrCreateExtraction(contractId: string): Promise<ContractExtractionPayload | null> {
   const contract = await prisma.contract.findUnique({
@@ -343,5 +396,5 @@ export async function getOrCreateExtraction(contractId: string): Promise<Contrac
     if (parsed.success) return parsed.data;
   }
 
-  return runMROExtractionStub(contractId);
+  return runMROExtraction(contractId);
 }

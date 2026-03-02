@@ -79,9 +79,10 @@ export default function ContractsPage() {
       .finally(() => setIsLoading(false));
   }, [searchQuery, typeFilter, statusFilter, riskFilter]);
 
-  const handleUploadSuccess = (newContract: ContractRecord) => {
-    setContracts((prev) => [newContract, ...prev]);
-    setTotal((t) => t + 1);
+  const handleUploadSuccess = (newContract: ContractRecord | ContractRecord[]) => {
+    const list = Array.isArray(newContract) ? newContract : [newContract];
+    setContracts((prev) => [...list, ...prev]);
+    setTotal((t) => t + list.length);
   };
 
   return (

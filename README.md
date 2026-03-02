@@ -21,9 +21,10 @@ cp .env.example .env
 
 Required variables:
 
-- `DATABASE_URL` - PostgreSQL connection string (e.g. `postgresql://user:pass@localhost:5432/contract_management`)
+- `DATABASE_URL` - SQLite for local dev: `file:./dev.db`; or PostgreSQL for production
 - `NEXTAUTH_URL` - App URL (e.g. `http://localhost:3000`)
 - `NEXTAUTH_SECRET` - Generate with `openssl rand -base64 32`
+- `OPENAI_API_KEY` - (Optional) For LLM-powered contract extraction. Get from [OpenAI API Keys](https://platform.openai.com/api-keys). **Never commit real keys**; `.env` is in `.gitignore`. Without it, extraction uses a stub (empty values + rules-based opportunities).
 
 ### 2. Install Dependencies
 
@@ -37,8 +38,8 @@ npm install
 # Generate Prisma client
 npm run db:generate
 
-# Run migrations (creates tables)
-npm run db:migrate
+# Push schema (SQLite: npm run db:push | PostgreSQL: npm run db:migrate)
+npm run db:push
 
 # Seed admin user + sample contracts
 npm run db:seed
@@ -56,6 +57,14 @@ Open [http://localhost:3000](http://localhost:3000). You will be redirected to s
 
 - **Email:** admin@example.com
 - **Password:** Admin123!
+
+### LLM Extraction (Optional)
+
+To extract real contract data using AI:
+
+1. Add `OPENAI_API_KEY` to `.env` (see `.env.example`)
+2. Test the key: `GET /api/extract/test` or `GET /api/extract/test?ping=1` (makes a minimal API call)
+3. Upload a PDF contract; extraction runs automatically and populates the dashboard
 
 ### Troubleshooting: Prisma "self-signed certificate" error
 
@@ -89,7 +98,8 @@ This only affects the Prisma binary download, not your app's runtime. For a perm
 - **Auth & RBAC:** Sign in, role-based access (Admin, Legal, Procurement, ReadOnly)
 - **Contract CRUD:** List, filter, search, create, update
 - **PDF Upload:** Upload contract PDFs, stored locally with metadata in DB
-- **Extraction:** Lightweight PDF text extraction + heuristic clause/obligation parsing
+- **Extraction:** PDF text extraction + LLM-powered MRO field extraction (or stub fallback when `OPENAI_API_KEY` is not set)
+- **Dashboard:** Real extracted insights (key stats, opportunities) when LLM is configured
 - **Activity Timeline:** Track uploads, extractions, status changes
 - **Compare:** Side-by-side text diff between contract versions
 
@@ -99,6 +109,19 @@ This only affects the Prisma binary download, not your app's runtime. For a perm
 - `POST /api/contracts` - Create contract + upload PDF
 - `GET /api/contracts/[id]` - Contract detail with terms, clauses, obligations
 - `PATCH /api/contracts/[id]` - Update contract
+- `POST /api/contracts/[id]/extract` - Run MRO extraction (LLM or stub)
 - `GET /api/contracts/[id]/activity` - Activity events
 - `GET /api/contracts/[id]/compare?baseVersion=...&otherContract=...` - Text diff
+- `GET /api/extract/test` - Check if `OPENAI_API_KEY` is set; `?ping=1` validates the key
 - `GET /api/documents/[documentId]/file` - Stream PDF (auth required)
+
+## Collaborators
+
+To add team members (e.g. Sabbarish, Talia, Joe):
+
+1. Open the repo on GitHub: [Contract_Management](https://github.com/avirshuk-alt/Contract_Management)
+2. Settings → Collaborators → Add people
+3. Each collaborator should:
+   - Clone the repo
+   - Copy `.env.example` to `.env` and add their own `OPENAI_API_KEY` (optional, for extraction)
+   - Run `npm install`, `npm run db:push`, `npm run db:seed`, `npm run dev`

@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+
+// Allow larger uploads and longer processing (e.g. Vercel 4.5MB default can fail)
+export const maxDuration = 60;
 import { auth } from "@/lib/auth";
 import { getContractList } from "@/lib/services/contract-service";
 import { listContractsSchema } from "@/lib/validations/contract";
@@ -6,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { saveFile } from "@/lib/storage";
 import { addActivityEvent } from "@/lib/services/contract-service";
 import { runExtractionPipeline } from "@/lib/services/extraction-service";
+import { runMROExtraction } from "@/lib/services/mro-extraction";
 import { createContractSchema } from "@/lib/validations/contract";
 import { toApiStatus } from "@/lib/api-mappers";
 
@@ -100,160 +104,172 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  // Sign-in is optional; allow unauthenticated upload for demo
+  try {
+    const session = await auth();
+    // Sign-in is optional; allow unauthenticated upload for demo
 
-  const formData = await req.formData();
-  const file = formData.get("file") as File | null;
-  const contractName = formData.get("contractName") as string | null;
-  const supplierName = formData.get("supplierName") as string | null;
-  const contractType = formData.get("contractType") as string | null;
-  const effectiveDate = formData.get("effectiveDate") as string | null;
-  const expiryDate = formData.get("expiryDate") as string | null;
-  const value = formData.get("value") as string | null;
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    const contractName = formData.get("contractName") as string | null;
+    const supplierName = formData.get("supplierName") as string | null;
+    const contractType = formData.get("contractType") as string | null;
+    const effectiveDate = formData.get("effectiveDate") as string | null;
+    const expiryDate = formData.get("expiryDate") as string | null;
+    const value = formData.get("value") as string | null;
 
-  const parsed = createContractSchema.safeParse({
-    contractName: contractName ?? "",
-    supplierName: supplierName ?? "",
-    contractType: contractType ?? "MSA",
-    effectiveDate: effectiveDate ?? new Date().toISOString().slice(0, 10),
-    expiryDate: expiryDate ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000 * 3).toISOString().slice(0, 10),
-    value: value ? parseFloat(value) : 0,
-    tags: [],
-  });
-
-  if (!parsed.success || !file || !isAllowedMimeType(file.type)) {
-    const message = !file
-      ? "A file is required"
-      : !isAllowedMimeType(file.type)
-        ? "Only PDF and DOCX files are allowed"
-        : "Invalid form data";
-    return NextResponse.json(
-      { error: parsed.success ? message : parsed.error.flatten() },
-      { status: 400 }
-    );
-  }
-
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return NextResponse.json(
-      { error: `File size must be under ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB` },
-      { status: 400 }
-    );
-  }
-
-  let supplier = await prisma.supplier.findFirst({
-    where: { name: parsed.data.supplierName },
-  });
-  if (!supplier) {
-    supplier = await prisma.supplier.create({
-      data: {
-        name: parsed.data.supplierName,
-        industry: null,
-        spendEstimate: 0,
-      },
+    const parsed = createContractSchema.safeParse({
+      contractName: contractName ?? "",
+      supplierName: supplierName ?? "",
+      contractType: contractType ?? "MSA",
+      effectiveDate: effectiveDate ?? new Date().toISOString().slice(0, 10),
+      expiryDate: expiryDate ?? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000 * 3).toISOString().slice(0, 10),
+      value: value ? parseFloat(value) : 0,
+      tags: [],
     });
-  }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const stored = await saveFile(buffer, file.name, file.type);
+    if (!parsed.success || !file || !isAllowedMimeType(file.type)) {
+      const message = !file
+        ? "A file is required"
+        : !isAllowedMimeType(file.type)
+          ? "Only PDF and DOCX files are allowed"
+          : parsed.success
+            ? "Invalid form data"
+            : (() => {
+                const f = parsed.error.flatten();
+                return f.formErrors[0] || Object.values(f.fieldErrors).flat()[0] || "Invalid form data";
+              })();
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
 
-  const riskScore = Math.floor(Math.random() * 50) + 20;
-  const riskLevel =
-    riskScore >= 75 ? "critical" : riskScore >= 55 ? "high" : riskScore >= 35 ? "medium" : "low";
-
-  const contract = await prisma.contract.create({
-    data: {
-      supplierId: supplier.id,
-      contractName: parsed.data.contractName,
-      contractType: TYPE_MAP[parsed.data.contractType] ?? "MSA",
-      effectiveDate: new Date(parsed.data.effectiveDate),
-      expiryDate: new Date(parsed.data.expiryDate),
-      status: "active",
-      riskScore,
-      riskLevel: RISK_MAP[riskLevel] ?? "low",
-      value: parsed.data.value,
-      tags: parsed.data.tags ?? [],
-    },
-  });
-
-  const doc = await prisma.contractDocument.create({
-    data: {
-      contractId: contract.id,
-      storagePath: stored.storagePath,
-      filename: stored.filename,
-      mimeType: stored.mimeType,
-      size: stored.size,
-      checksum: stored.checksum,
-    },
-  });
-
-  const version = await prisma.contractVersion.create({
-    data: {
-      documentId: doc.id,
-      versionNumber: 1,
-      processingStatus: "PENDING",
-    },
-  });
-
-  await addActivityEvent(
-    contract.id,
-    "uploaded",
-    `${parsed.data.contractName} uploaded`,
-    session?.user?.id
-  );
-
-  const isPdf = stored.mimeType === "application/pdf";
-
-  if (isPdf) {
-    try {
-      await runExtractionPipeline(version.id);
-      await addActivityEvent(
-        contract.id,
-        "extracted",
-        "Contract terms extracted successfully",
-        session?.user?.id
-      );
-      await addActivityEvent(
-        contract.id,
-        "insights_generated",
-        `Risk analysis completed - Score: ${riskScore}/100`,
-        session?.user?.id
-      );
-      await prisma.contract.update({
-        where: { id: contract.id },
-        data: { lastAnalyzedAt: new Date() },
-      });
-    } catch (e) {
-      await addActivityEvent(
-        contract.id,
-        "extracted",
-        "Extraction failed - manual review required",
-        session?.user?.id,
-        { error: String(e) }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `File size must be under ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB` },
+        { status: 400 }
       );
     }
-  } else {
+
+    let supplier = await prisma.supplier.findFirst({
+      where: { name: parsed.data.supplierName },
+    });
+    if (!supplier) {
+      supplier = await prisma.supplier.create({
+        data: {
+          name: parsed.data.supplierName,
+          industry: null,
+          spendEstimate: 0,
+        },
+      });
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const stored = await saveFile(buffer, file.name, file.type);
+
+    const riskScore = Math.floor(Math.random() * 50) + 20;
+    const riskLevel =
+      riskScore >= 75 ? "critical" : riskScore >= 55 ? "high" : riskScore >= 35 ? "medium" : "low";
+
+    const contract = await prisma.contract.create({
+      data: {
+        supplierId: supplier.id,
+        contractName: parsed.data.contractName,
+        contractType: TYPE_MAP[parsed.data.contractType] ?? "MSA",
+        effectiveDate: new Date(parsed.data.effectiveDate),
+        expiryDate: new Date(parsed.data.expiryDate),
+        status: "active",
+        riskScore,
+        riskLevel: RISK_MAP[riskLevel] ?? "low",
+        value: parsed.data.value,
+        tags: parsed.data.tags ?? [],
+      },
+    });
+
+    const doc = await prisma.contractDocument.create({
+      data: {
+        contractId: contract.id,
+        storagePath: stored.storagePath,
+        filename: stored.filename,
+        mimeType: stored.mimeType,
+        size: stored.size,
+        checksum: stored.checksum,
+      },
+    });
+
+    const version = await prisma.contractVersion.create({
+      data: {
+        documentId: doc.id,
+        versionNumber: 1,
+        processingStatus: "PENDING",
+      },
+    });
+
     await addActivityEvent(
       contract.id,
       "uploaded",
-      "Document stored; AI extraction available for PDF only",
+      `${parsed.data.contractName} uploaded`,
       session?.user?.id
     );
-  }
 
-  return NextResponse.json({
-    id: contract.id,
-    supplierId: contract.supplierId,
-    supplierName: supplier.name,
-    contractName: contract.contractName,
-    contractType: contract.contractType,
-    effectiveDate: contract.effectiveDate.toISOString().slice(0, 10),
-    expiryDate: contract.expiryDate.toISOString().slice(0, 10),
-    status: toApiStatus(contract.status),
-    riskScore: contract.riskScore,
-    riskLevel: contract.riskLevel,
-    value: contract.value,
-    uploadedAt: contract.uploadedAt.toISOString(),
-    lastAnalyzedAt: contract.lastAnalyzedAt?.toISOString() ?? null,
-  });
+    const isPdf = stored.mimeType === "application/pdf";
+
+    if (isPdf) {
+      try {
+        await runExtractionPipeline(version.id);
+        await runMROExtraction(contract.id);
+        await addActivityEvent(
+          contract.id,
+          "extracted",
+          "Contract terms extracted successfully",
+          session?.user?.id
+        );
+        await addActivityEvent(
+          contract.id,
+          "insights_generated",
+          `Risk analysis completed - Score: ${riskScore}/100`,
+          session?.user?.id
+        );
+        await prisma.contract.update({
+          where: { id: contract.id },
+          data: { lastAnalyzedAt: new Date() },
+        });
+      } catch (e) {
+        await addActivityEvent(
+          contract.id,
+          "extracted",
+          "Extraction failed - manual review required",
+          session?.user?.id,
+          { error: String(e) }
+        );
+      }
+    } else {
+      await addActivityEvent(
+        contract.id,
+        "uploaded",
+        "Document stored; AI extraction available for PDF only",
+        session?.user?.id
+      );
+    }
+
+    return NextResponse.json({
+      id: contract.id,
+      supplierId: contract.supplierId,
+      supplierName: supplier.name,
+      contractName: contract.contractName,
+      contractType: contract.contractType,
+      effectiveDate: contract.effectiveDate.toISOString().slice(0, 10),
+      expiryDate: contract.expiryDate.toISOString().slice(0, 10),
+      status: toApiStatus(contract.status),
+      riskScore: contract.riskScore,
+      riskLevel: contract.riskLevel,
+      value: contract.value,
+      uploadedAt: contract.uploadedAt.toISOString(),
+      lastAnalyzedAt: contract.lastAnalyzedAt?.toISOString() ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Upload failed";
+    console.error("[POST /api/contracts]", err);
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
+  }
 }
