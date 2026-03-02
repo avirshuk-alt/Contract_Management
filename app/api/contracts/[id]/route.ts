@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getContractById } from "@/lib/services/contract-service";
+import { getOrCreateExtraction } from "@/lib/services/mro-extraction";
 import { prisma } from "@/lib/db";
 import { updateContractSchema } from "@/lib/validations/contract";
 import { toApiStatus } from "@/lib/api-mappers";
@@ -58,6 +59,7 @@ function mapContractToApi(c: Awaited<ReturnType<typeof getContractById>>) {
       status: ob.status,
       evidenceLink: ob.evidenceLink ?? undefined,
     })) ?? [],
+    extraction: (c as { extraction?: unknown }).extraction ?? null,
   };
 }
 
@@ -95,15 +97,17 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  await auth();
+  // Sign-in is optional; allow unauthenticated access for demo
 
   const { id } = await params;
-  const contract = await getContractById(id);
+  let contract = await getContractById(id);
   if (!contract) {
     return NextResponse.json({ error: "Contract not found" }, { status: 404 });
+  }
+  if ((contract as { extraction?: unknown }).extraction == null) {
+    await getOrCreateExtraction(id);
+    contract = (await getContractById(id)) ?? contract;
   }
 
   const mapped = mapContractToApi(contract);
@@ -115,9 +119,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Sign-in is optional; allow unauthenticated access for demo
 
   const { id } = await params;
   const body = await req.json();
@@ -142,10 +144,10 @@ export async function PATCH(
   });
 
   if (parsed.data.status) {
-    await addActivityEvent(id, "status_change", `Status updated to ${parsed.data.status}`, session.user.id);
+    await addActivityEvent(id, "status_change", `Status updated to ${parsed.data.status}`, session?.user?.id);
   }
   if (parsed.data.riskScore !== undefined || parsed.data.riskLevel) {
-    await addActivityEvent(id, "risk_updated", `Risk updated`, session.user.id);
+    await addActivityEvent(id, "risk_updated", `Risk updated`, session?.user?.id);
   }
 
   const full = await getContractById(id);

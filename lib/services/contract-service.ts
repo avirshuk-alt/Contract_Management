@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import type {
   ContractType,
   ContractStatus,
@@ -121,7 +122,13 @@ export async function addActivityEvent(
   metadata?: Record<string, unknown>
 ) {
   return prisma.activityEvent.create({
-    data: { contractId, userId, action, details, metadata: metadata ?? undefined },
+    data: {
+      contractId,
+      userId,
+      action,
+      details,
+      metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
+    },
   });
 }
 

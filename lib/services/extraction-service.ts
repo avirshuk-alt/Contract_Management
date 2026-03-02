@@ -134,13 +134,13 @@ function extractObligationsHeuristic(text: string): Array<{
   obligation: string;
   owner: "Supplier" | "Client" | "Both";
   dueDate: string | null;
-  status: "pending" | "completed" | "overdue" | "at-risk";
+  status: "pending" | "completed" | "overdue" | "at_risk";
 }> {
   const obligations: Array<{
     obligation: string;
     owner: "Supplier" | "Client" | "Both";
     dueDate: string | null;
-    status: "pending" | "completed" | "overdue" | "at-risk";
+    status: "pending" | "completed" | "overdue" | "at_risk";
   }> = [];
 
   const obligationKeywords = [
@@ -227,13 +227,15 @@ export async function runExtractionPipeline(versionId: string): Promise<Contract
     }
 
     for (let i = 0; i < obligations.length; i++) {
+      const ob = obligations[i];
+      const dueDateVal = ob.dueDate != null ? new Date(ob.dueDate) : null;
       await prisma.obligation.create({
         data: {
           versionId,
-          obligation: obligations[i].obligation,
-          owner: obligations[i].owner,
-          dueDate: obligations[i].dueDate ? new Date(obligations[i].dueDate) : null,
-          status: obligations[i].status,
+          obligation: ob.obligation,
+          owner: ob.owner,
+          dueDate: dueDateVal,
+          status: ob.status,
           sortOrder: i,
         },
       });

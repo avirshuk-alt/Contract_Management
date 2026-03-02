@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Home,
   LayoutDashboard,
   FileText,
+  GitCompare,
+  Lightbulb,
+  BarChart3,
   Building2,
   Settings,
   Sparkles,
@@ -14,8 +18,12 @@ import {
 import { cn } from "@/lib/utils";
 
 const navigation = [
+  { name: "Home", href: "/", icon: Home },
+  { name: "Contracts Library", href: "/contracts", icon: FileText },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Contracts", href: "/contracts", icon: FileText },
+  { name: "Comparison", href: "/compare", icon: GitCompare },
+  { name: "Opportunities", href: "/opportunities", icon: Lightbulb },
+  { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Suppliers", href: "/suppliers", icon: Building2 },
   { name: "Workflows", href: "/workflows", icon: Workflow },
   { name: "Settings", href: "/settings", icon: Settings },
@@ -40,7 +48,9 @@ export function AppSidebar() {
       <nav className="flex-1 space-y-1 px-3 py-4">
         {navigation.map((item) => {
           const isActive =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+            item.href === "/"
+              ? pathname === "/"
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.name}

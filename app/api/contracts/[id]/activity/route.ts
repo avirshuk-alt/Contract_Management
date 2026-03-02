@@ -7,10 +7,8 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  await auth();
+  // Sign-in is optional; allow unauthenticated access for demo
 
   const { id } = await params;
   const events = await getActivityForContract(id);

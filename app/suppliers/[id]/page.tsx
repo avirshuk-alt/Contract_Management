@@ -117,7 +117,7 @@ export default function SupplierDetailPage({
             <CardTitle className="text-sm font-medium">Risk Trend</CardTitle>
             {riskTrend === "improving" ? (
               <TrendingDown className="h-4 w-4 text-success" />
-            ) : riskTrend === "worsening" ? (
+            ) : riskTrend === "declining" ? (
               <TrendingUp className="h-4 w-4 text-destructive" />
             ) : (
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -178,7 +178,7 @@ export default function SupplierDetailPage({
                                   {contract.title}
                                 </Link>
                                 <StatusBadge status={contract.status} />
-                                <RiskBadge level={contract.riskLevel} size="sm" />
+                                <RiskBadge level={contract.riskLevel} />
                               </div>
                               <p className="text-sm text-muted-foreground">
                                 {contract.type} | {formatCurrency(contract.annualValue)}/year

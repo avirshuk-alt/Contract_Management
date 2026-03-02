@@ -78,6 +78,24 @@ export function getDaysUntilExpiration(dateStr: string): number {
   return daysUntil(dateStr);
 }
 
+export function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function formatCurrency(value: number): string {
+  if (value === 0) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 // Helper to determine risk level from score
 function getRiskLevel(score: number): RiskLevel {
   if (score >= 75) return "critical";

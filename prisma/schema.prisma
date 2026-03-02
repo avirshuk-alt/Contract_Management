@@ -103,6 +103,7 @@ model Contract {
   tags           Json           @default("[]")
   uploadedAt     DateTime       @default(now())
   lastAnalyzedAt DateTime?
+  extraction     Json?           // MRO extraction payload (ContractExtractionPayload)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   documents      ContractDocument[]
