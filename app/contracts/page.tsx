@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { RiskBadge } from "@/components/risk-badge";
 import { UploadModal } from "@/components/contracts/upload-modal";
+import type { ContractRecord } from "@/lib/types/contract";
 import {
   contractTypes,
   statusOptions,
@@ -32,22 +33,6 @@ import {
   type ContractStatus,
   type RiskLevel,
 } from "@/lib/seed-data";
-
-interface ContractRow {
-  id: string;
-  supplierId: string;
-  supplierName: string;
-  contractName: string;
-  contractType: string;
-  effectiveDate: string;
-  expiryDate: string;
-  status: string;
-  riskScore: number;
-  riskLevel: string;
-  value: number;
-  uploadedAt: string;
-  lastAnalyzedAt: string | null;
-}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -73,7 +58,7 @@ export default function ContractsPage() {
   const [statusFilter, setStatusFilter] = useState<ContractStatus | "all">("all");
   const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [contracts, setContracts] = useState<ContractRow[]>([]);
+  const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -94,7 +79,7 @@ export default function ContractsPage() {
       .finally(() => setIsLoading(false));
   }, [searchQuery, typeFilter, statusFilter, riskFilter]);
 
-  const handleUploadSuccess = (newContract: ContractRow) => {
+  const handleUploadSuccess = (newContract: ContractRecord) => {
     setContracts((prev) => [newContract, ...prev]);
     setTotal((t) => t + 1);
   };
@@ -105,7 +90,7 @@ export default function ContractsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">
-            Contract Library
+            Contracts Library
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage and analyze your supplier contracts
@@ -202,6 +187,7 @@ export default function ContractsPage() {
               </TableHead>
               <TableHead className="text-muted-foreground">Contract Name</TableHead>
               <TableHead className="text-muted-foreground">Type</TableHead>
+              <TableHead className="text-muted-foreground">Upload Date</TableHead>
               <TableHead className="text-muted-foreground">Effective Date</TableHead>
               <TableHead className="text-muted-foreground">Expiry Date</TableHead>
               <TableHead className="text-muted-foreground">Value</TableHead>
@@ -212,13 +198,13 @@ export default function ContractsPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center">
+                <TableCell colSpan={9} className="h-32 text-center">
                   <p className="text-sm text-muted-foreground">Loading contracts...</p>
                 </TableCell>
               </TableRow>
             ) : contracts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center">
+                <TableCell colSpan={9} className="h-32 text-center">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <FileText className="h-8 w-8 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground">
@@ -253,6 +239,9 @@ export default function ContractsPage() {
                     <span className="text-xs font-medium px-2 py-1 rounded bg-secondary text-secondary-foreground">
                       {contract.contractType}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatDate(contract.uploadedAt)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {formatDate(contract.effectiveDate)}

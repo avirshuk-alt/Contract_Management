@@ -33,11 +33,20 @@ const TYPE_MAP: Record<string, "MSA" | "SOW" | "SLA" | "NDA" | "License" | "Amen
   Amendment: "Amendment",
 };
 
+// Backend file validation
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+const ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+] as const;
+
+function isAllowedMimeType(mime: string): boolean {
+  return ALLOWED_MIME_TYPES.includes(mime as (typeof ALLOWED_MIME_TYPES)[number]);
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Sign-in is optional; allow unauthenticated access for demo
 
   const { searchParams } = new URL(req.url);
   const parsed = listContractsSchema.safeParse({
@@ -92,9 +101,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Sign-in is optional; allow unauthenticated upload for demo
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
@@ -115,9 +122,21 @@ export async function POST(req: NextRequest) {
     tags: [],
   });
 
-  if (!parsed.success || !file || file.type !== "application/pdf") {
+  if (!parsed.success || !file || !isAllowedMimeType(file.type)) {
+    const message = !file
+      ? "A file is required"
+      : !isAllowedMimeType(file.type)
+        ? "Only PDF and DOCX files are allowed"
+        : "Invalid form data";
     return NextResponse.json(
-      { error: parsed.success ? "PDF file required" : parsed.error.flatten() },
+      { error: parsed.success ? message : parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return NextResponse.json(
+      { error: `File size must be under ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB` },
       { status: 400 }
     );
   }
@@ -180,40 +199,51 @@ export async function POST(req: NextRequest) {
     contract.id,
     "uploaded",
     `${parsed.data.contractName} uploaded`,
-    session.user.id
+    session?.user?.id
   );
 
-  // Run extraction inline for MVP
-  try {
-    await runExtractionPipeline(version.id);
+  const isPdf = stored.mimeType === "application/pdf";
+
+  if (isPdf) {
+    try {
+      await runExtractionPipeline(version.id);
+      await addActivityEvent(
+        contract.id,
+        "extracted",
+        "Contract terms extracted successfully",
+        session?.user?.id
+      );
+      await addActivityEvent(
+        contract.id,
+        "insights_generated",
+        `Risk analysis completed - Score: ${riskScore}/100`,
+        session?.user?.id
+      );
+      await prisma.contract.update({
+        where: { id: contract.id },
+        data: { lastAnalyzedAt: new Date() },
+      });
+    } catch (e) {
+      await addActivityEvent(
+        contract.id,
+        "extracted",
+        "Extraction failed - manual review required",
+        session?.user?.id,
+        { error: String(e) }
+      );
+    }
+  } else {
     await addActivityEvent(
       contract.id,
-      "extracted",
-      "Contract terms extracted successfully",
-      session.user.id
-    );
-    await addActivityEvent(
-      contract.id,
-      "insights_generated",
-      `Risk analysis completed - Score: ${riskScore}/100`,
-      session.user.id
-    );
-    await prisma.contract.update({
-      where: { id: contract.id },
-      data: { lastAnalyzedAt: new Date() },
-    });
-  } catch (e) {
-    await addActivityEvent(
-      contract.id,
-      "extracted",
-      "Extraction failed - manual review required",
-      session.user.id,
-      { error: String(e) }
+      "uploaded",
+      "Document stored; AI extraction available for PDF only",
+      session?.user?.id
     );
   }
 
   return NextResponse.json({
     id: contract.id,
+    supplierId: contract.supplierId,
     supplierName: supplier.name,
     contractName: contract.contractName,
     contractType: contract.contractType,

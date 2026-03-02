@@ -21,24 +21,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { contractTypes, type ContractType, suppliers } from "@/lib/seed-data";
+import type { ContractRecord } from "@/lib/types/contract";
+
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
+const ALLOWED_EXTENSIONS = [".pdf", ".docx"];
+
+function isAllowedFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return (
+    file.type === "application/pdf" ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext))
+  );
+}
 
 interface UploadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: (contract: {
-    id: string;
-    supplierName: string;
-    contractName: string;
-    contractType: string;
-    effectiveDate: string;
-    expiryDate: string;
-    status: string;
-    riskScore: number;
-    riskLevel: string;
-    value: number;
-    uploadedAt: string;
-    lastAnalyzedAt: string | null;
-  }) => void;
+  onSuccess?: (contract: ContractRecord) => void;
 }
 
 export function UploadModal({ open, onOpenChange, onSuccess }: UploadModalProps) {
@@ -65,14 +65,32 @@ export function UploadModal({ open, onOpenChange, onSuccess }: UploadModalProps)
     e.preventDefault();
     setIsDragOver(false);
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type === "application/pdf") {
+    if (droppedFile && isAllowedFile(droppedFile)) {
+      if (droppedFile.size > MAX_FILE_SIZE_BYTES) {
+        setError(`File must be under ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB`);
+        return;
+      }
+      setError("");
       setFile(droppedFile);
+    } else if (droppedFile) {
+      setError("Only PDF and DOCX files are allowed");
     }
   }, []);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
+      if (!isAllowedFile(selectedFile)) {
+        setError("Only PDF and DOCX files are allowed");
+        setFile(null);
+        return;
+      }
+      if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+        setError(`File must be under ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB`);
+        setFile(null);
+        return;
+      }
+      setError("");
       setFile(selectedFile);
     }
   }, []);
@@ -82,6 +100,12 @@ export function UploadModal({ open, onOpenChange, onSuccess }: UploadModalProps)
 
     setIsUploading(true);
     setError("");
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File must be under ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB`);
+      setIsUploading(false);
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -128,7 +152,7 @@ export function UploadModal({ open, onOpenChange, onSuccess }: UploadModalProps)
         <DialogHeader>
           <DialogTitle className="text-foreground">Upload Contract</DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Upload a PDF contract for AI-powered analysis and insights generation.
+            Upload a PDF or DOCX contract for AI-powered analysis and insights generation.
           </DialogDescription>
         </DialogHeader>
 
@@ -174,18 +198,18 @@ export function UploadModal({ open, onOpenChange, onSuccess }: UploadModalProps)
               <>
                 <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
                 <p className="mt-2 text-sm text-foreground">
-                  Drag and drop your PDF here, or{" "}
+                  Drag and drop your PDF or DOCX here, or{" "}
                   <label className="text-primary hover:underline cursor-pointer">
                     browse
                     <input
                       type="file"
-                      accept=".pdf"
+                      accept=".pdf,.docx"
                       onChange={handleFileChange}
                       className="sr-only"
                     />
                   </label>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">PDF files only</p>
+                <p className="mt-1 text-xs text-muted-foreground">PDF or DOCX, max 100 MB</p>
               </>
             )}
           </div>

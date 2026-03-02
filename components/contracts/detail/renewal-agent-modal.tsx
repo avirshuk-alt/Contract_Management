@@ -12,12 +12,26 @@ import {
 import { Button } from "@/components/ui/button";
 import { AIBadge } from "@/components/ai-badge";
 import { agentDraftEmail, type ContractTerms, type ContractInsights } from "@/lib/mock-llm";
-import type { Contract } from "@/lib/seed-data";
+
+/** Contract shape from API (contract detail page); compatible with RenewalAgentModal usage */
+export interface RenewalModalContract {
+  id: string;
+  contractName: string;
+  supplierName: string;
+  contractType: string;
+  expiryDate: string;
+  status: string;
+  riskScore: number;
+  riskLevel: string;
+  value: number;
+  uploadedAt?: string;
+  lastAnalyzedAt?: string | null;
+}
 
 interface RenewalAgentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  contract: Contract;
+  contract: RenewalModalContract;
   terms: ContractTerms;
   insights: ContractInsights;
 }

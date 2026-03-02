@@ -7,10 +7,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ documentId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  await auth();
+  // Sign-in is optional; allow unauthenticated access for demo
 
   const { documentId } = await params;
   const doc = await prisma.contractDocument.findUnique({

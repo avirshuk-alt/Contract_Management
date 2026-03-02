@@ -36,6 +36,7 @@ function formatDate(dateStr: string): string {
 
 interface ContractDetail {
   id: string;
+  supplierId: string;
   supplierName: string;
   contractName: string;
   contractType: string;
@@ -45,6 +46,8 @@ interface ContractDetail {
   riskScore: number;
   riskLevel: string;
   value: number;
+  uploadedAt: string;
+  lastAnalyzedAt: string | null;
   documentId: string | null;
   latestVersionId: string | null;
   terms: ContractTerms | null;
@@ -166,7 +169,7 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-1">
-          <ContractPDFViewer contractId={id} documentId={contract.documentId} />
+          <ContractPDFViewer contractId={id} />
         </div>
 
         <div className="xl:col-span-2 space-y-6">
