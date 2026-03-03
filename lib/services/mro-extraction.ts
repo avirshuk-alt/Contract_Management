@@ -10,6 +10,8 @@ import type {
   ContractExtractionPayload,
   KeyStats,
   KeyTerms,
+  ContractIdentifiers,
+  CriticalTerms,
   Derived,
   Opportunity,
   Evidence,
@@ -59,6 +61,20 @@ export function createEmptyExtractionPayload(): ContractExtractionPayload {
     orderingEcommerce: emptyField(null),
   };
 
+  const contractIdentifiers: ContractIdentifiers = {
+    contractTitleFromDoc: emptyField<string | null>(null),
+    supplierNameFromDoc: emptyField<string | null>(null),
+    contractValueFromDoc: emptyField<string | null>(null),
+  };
+
+  const criticalTerms: CriticalTerms = {
+    paymentTerms: emptyField<{ summary: string; netDays?: number; rawText?: string } | null>(null),
+    terminationExit: emptyField<{ summary: string; noticeDays?: number; conditions?: string } | null>(null),
+    penaltiesDamages: emptyField<{ summary: string; latePayment?: string; breach?: string } | null>(null),
+    renewalTerms: emptyField<{ summary: string; autoRenewal?: boolean; noticeDays?: number } | null>(null),
+    liabilityIndemnity: emptyField<{ summary: string; liabilityCap?: string; indemnificationScope?: string } | null>(null),
+  };
+
   const derived: Derived = {
     daysUntilExpiry: null,
     isExpired: null,
@@ -75,6 +91,8 @@ export function createEmptyExtractionPayload(): ContractExtractionPayload {
     },
     keyStats,
     keyTerms,
+    contractIdentifiers,
+    criticalTerms,
     derived,
     valueCommitments: null,
     opportunities: [],
@@ -381,8 +399,29 @@ export async function runMROExtraction(contractId: string): Promise<ContractExtr
   return runMROExtractionStub(contractId);
 }
 
+/** Default critical terms when loading legacy payloads that don't have them. */
+function getDefaultCriticalTerms(): CriticalTerms {
+  return {
+    paymentTerms: emptyField<{ summary: string; netDays?: number; rawText?: string } | null>(null),
+    terminationExit: emptyField<{ summary: string; noticeDays?: number; conditions?: string } | null>(null),
+    penaltiesDamages: emptyField<{ summary: string; latePayment?: string; breach?: string } | null>(null),
+    renewalTerms: emptyField<{ summary: string; autoRenewal?: boolean; noticeDays?: number } | null>(null),
+    liabilityIndemnity: emptyField<{ summary: string; liabilityCap?: string; indemnificationScope?: string } | null>(null),
+  };
+}
+
+/** Default contract identifiers for legacy payloads. */
+function getDefaultContractIdentifiers(): ContractIdentifiers {
+  return {
+    contractTitleFromDoc: emptyField<string | null>(null),
+    supplierNameFromDoc: emptyField<string | null>(null),
+    contractValueFromDoc: emptyField<string | null>(null),
+  };
+}
+
 /**
  * Get persisted extraction for a contract. If missing, run MRO extraction (LLM or stub) and persist.
+ * Legacy payloads without criticalTerms are merged with defaults so they still validate.
  */
 export async function getOrCreateExtraction(contractId: string): Promise<ContractExtractionPayload | null> {
   const contract = await prisma.contract.findUnique({
@@ -392,7 +431,13 @@ export async function getOrCreateExtraction(contractId: string): Promise<Contrac
 
   const raw = (contract as { extraction?: unknown }).extraction;
   if (raw != null && typeof raw === "object" && "meta" in raw) {
-    const parsed = contractExtractionPayloadSchema.safeParse(raw);
+    let parsed = contractExtractionPayloadSchema.safeParse(raw);
+    if (parsed.success) return parsed.data;
+    const o = raw as Record<string, unknown>;
+    const withDefaults = { ...raw };
+    if (!o.criticalTerms || typeof o.criticalTerms !== "object") (withDefaults as Record<string, unknown>).criticalTerms = getDefaultCriticalTerms();
+    if (!o.contractIdentifiers || typeof o.contractIdentifiers !== "object") (withDefaults as Record<string, unknown>).contractIdentifiers = getDefaultContractIdentifiers();
+    parsed = contractExtractionPayloadSchema.safeParse(withDefaults);
     if (parsed.success) return parsed.data;
   }
 

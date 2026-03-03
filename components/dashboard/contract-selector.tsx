@@ -8,8 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DEMO_CONTRACT_OPTIONS } from "@/lib/dashboard-demo-data";
-
 export interface ContractOption {
   id: string;
   contractName: string;
@@ -18,19 +16,15 @@ export interface ContractOption {
 }
 
 /**
- * Compact contract selector for Dashboard header (top-right).
- * Data source: same backend as Contracts Library (/api/contracts).
- * When backend returns 0 contracts, injects UI-only CONTRACT_DEMO_1 and CONTRACT_DEMO_2 (not persisted).
- * No upload behavior.
+ * Compact contract selector for Dashboard header.
+ * Data source: /api/contracts. Parent shows empty state when 0 contracts.
  */
 export function ContractSelector({
-  contracts,
   selectedId,
   displayList,
 }: {
   contracts: ContractOption[];
   selectedId: string | null;
-  /** When 0 contracts from backend, pass demo options here so dropdown always shows entries. */
   displayList: ContractOption[];
 }) {
   const router = useRouter();

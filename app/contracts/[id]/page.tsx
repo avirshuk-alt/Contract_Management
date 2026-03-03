@@ -24,7 +24,10 @@ import { ContractPDFViewer } from "@/components/contracts/detail/contract-pdf-vi
 import { ActivityTimeline } from "@/components/contracts/detail/activity-timeline";
 import { CompareModal } from "@/components/contracts/detail/compare-modal";
 import { RenewalAgentModal } from "@/components/contracts/detail/renewal-agent-modal";
+import { CriticalTermsCard } from "@/components/contracts/detail/critical-terms-card";
+import { ExtractionView } from "@/components/contracts/detail/extraction-view";
 import type { ContractTerms, ContractInsights as InsightsType, Clause, Obligation } from "@/lib/mock-llm";
+import type { ContractExtractionPayload } from "@/lib/types/extraction";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -54,6 +57,7 @@ interface ContractDetail {
   insights: InsightsType | null;
   clauses: Clause[];
   obligations: Obligation[];
+  extraction?: ContractExtractionPayload | null;
 }
 
 export default function ContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -175,16 +179,22 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
         <div className="xl:col-span-2 space-y-6">
           <Card className="bg-card border-border p-4">
             <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-5 bg-secondary">
+              <TabsList className="grid w-full grid-cols-6 bg-secondary">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="extraction">Extraction</TabsTrigger>
                 <TabsTrigger value="clauses">Clauses</TabsTrigger>
                 <TabsTrigger value="obligations">Obligations</TabsTrigger>
                 <TabsTrigger value="insights">Insights</TabsTrigger>
                 <TabsTrigger value="ask">Ask</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="overview" className="mt-4">
+              <TabsContent value="overview" className="mt-4 space-y-6">
                 <ContractOverview terms={terms} insights={insights} />
+                <CriticalTermsCard criticalTerms={contract.extraction?.criticalTerms} />
+              </TabsContent>
+
+              <TabsContent value="extraction" className="mt-4">
+                <ExtractionView extraction={contract.extraction} />
               </TabsContent>
 
               <TabsContent value="clauses" className="mt-4">

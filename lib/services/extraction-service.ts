@@ -3,15 +3,42 @@
  * Structured for future LLM integration.
  */
 
+import path from "path";
+import { pathToFileURL } from "url";
 import { prisma } from "@/lib/db";
 import type { ContractVersion } from "@prisma/client";
 
 async function extractTextFromPdf(buffer: Buffer): Promise<{ text: string; numPages: number }> {
   const { PDFParse } = await import("pdf-parse");
+  // Set worker path so pdfjs-dist finds pdf.worker.mjs when run inside Next.js server bundle
+  const workerPath = path.join(
+    process.cwd(),
+    "node_modules",
+    "pdfjs-dist",
+    "legacy",
+    "build",
+    "pdf.worker.mjs"
+  );
+  PDFParse.setWorker(pathToFileURL(workerPath).href);
+
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   const result = await parser.getText();
   await parser.destroy();
   return { text: result.text, numPages: result.total };
+}
+
+const DOCX_MIME_TYPES = [
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword", // .doc fallback; mammoth works best with .docx
+];
+
+async function extractTextFromDocx(buffer: Buffer): Promise<{ text: string; numPages: number }> {
+  const mammoth = await import("mammoth");
+  const result = await mammoth.extractRawText({ buffer });
+  const text = result.value ?? "";
+  // DOCX has no reliable page count; use paragraph breaks as proxy for "sections"
+  const numPages = Math.max(1, (text.match(/\n\n+/g)?.length ?? 0) + 1);
+  return { text, numPages };
 }
 
 function deriveFieldsFromText(text: string): {
@@ -193,7 +220,14 @@ export async function runExtractionPipeline(versionId: string): Promise<Contract
   try {
     const { readFile } = await import("@/lib/storage");
     const buffer = await readFile(version.document.storagePath);
-    const { text } = await extractTextFromPdf(buffer);
+    const mime = (version.document.mimeType ?? "").toLowerCase();
+    const isDocx =
+      DOCX_MIME_TYPES.some((t) => mime === t) ||
+      version.document.storagePath.toLowerCase().endsWith(".docx") ||
+      version.document.storagePath.toLowerCase().endsWith(".doc");
+    const { text } = isDocx
+      ? await extractTextFromDocx(buffer)
+      : await extractTextFromPdf(buffer);
 
     const derived = deriveFieldsFromText(text);
     const clauses = extractClausesHeuristic(text);

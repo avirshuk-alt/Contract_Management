@@ -25,16 +25,9 @@ function categoryToLever(category: string): string {
   return map[category] ?? "Other terms";
 }
 
-const DEMO_SUPPLIER_VALUE_COMMITMENTS: SupplierValueCommitment[] = [
-  { title: "Quarterly cost takeout review", target: "Annual cost reduction target", cadence: "Quarterly", isDemoSource: true },
-  { title: "SKU rationalization program", details: "Reduce SKU count to lower carrying cost", cadence: "Ongoing", isDemoSource: true },
-  { title: "VMI optimization to reduce stockouts", target: "Improve fill rate", cadence: "Monthly", isDemoSource: true },
-  { title: "Quarterly rebate optimization review", cadence: "Quarterly", isDemoSource: true },
-];
-
 function buildSupplierValueCommitments(
   payload: ContractExtractionPayload,
-  isDemoSource: boolean
+  _isDemoSource: boolean
 ): SupplierValueCommitment[] {
   const vc = (payload as { valueCommitments?: { initiatives: Array<{ title: string; details?: string; target?: string; cadence?: string }> } | null }).valueCommitments;
   if (vc?.initiatives?.length) {
@@ -46,10 +39,7 @@ function buildSupplierValueCommitments(
       isDemoSource: false,
     }));
   }
-  if (isDemoSource) {
-    return DEMO_SUPPLIER_VALUE_COMMITMENTS;
-  }
-  return DEMO_SUPPLIER_VALUE_COMMITMENTS.map((c) => ({ ...c, isDemoSource: true }));
+  return [];
 }
 
 export interface DashboardKeyStats {

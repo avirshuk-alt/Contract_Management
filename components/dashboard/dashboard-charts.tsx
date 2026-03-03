@@ -13,7 +13,6 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { DEMO_SPEND_SAVINGS_TREND, DEMO_RISK_VS_SAVINGS } from "@/lib/dashboard-demo-data";
 import { Badge } from "@/components/ui/badge";
 
 const EMPTY_MSG = "Not enough extracted data to chart this yet.";
@@ -311,12 +310,9 @@ export function DashboardSpendSavingsChart({
   isDemo?: boolean;
   spendTrend?: Array<{ month: string; spendUSD: number; savingsUSD: number }>;
 }) {
-  const data =
-    spendTrend?.length
-      ? spendTrend.map((s) => ({ month: s.month, spend: s.spendUSD, savings: s.savingsUSD }))
-      : isDemo
-        ? DEMO_SPEND_SAVINGS_TREND
-        : null;
+  const data = spendTrend?.length
+    ? spendTrend.map((s) => ({ month: s.month, spend: s.spendUSD, savings: s.savingsUSD }))
+    : null;
 
   if (!data || data.length === 0) {
     return (
@@ -365,7 +361,7 @@ export function DashboardRiskVsSavingsChart({
   isDemo?: boolean;
   riskVsSavings?: Array<{ category?: string; riskScore: number; savingsUSD: number }>;
 }) {
-  const raw = riskVsSavings?.length ? riskVsSavings : isDemo ? DEMO_RISK_VS_SAVINGS : [];
+  const raw = riskVsSavings?.length ? riskVsSavings : [];
   const data = raw.map((r: { category?: string; riskScore: number; savingsUSD?: number; savingsPotential?: number }) => ({
     category: r.category ?? "",
     riskScore: r.riskScore,

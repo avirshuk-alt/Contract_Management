@@ -1,3 +1,5 @@
+import path from "path";
+import { pathToFileURL } from "url";
 import { NextRequest, NextResponse } from "next/server";
 import { extractMetadata } from "@/lib/services/metadata-extraction";
 
@@ -8,6 +10,16 @@ const ALLOWED_MIME = [
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
   const { PDFParse } = await import("pdf-parse");
+  const workerPath = path.join(
+    process.cwd(),
+    "node_modules",
+    "pdfjs-dist",
+    "legacy",
+    "build",
+    "pdf.worker.mjs"
+  );
+  PDFParse.setWorker(pathToFileURL(workerPath).href);
+
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   const result = await parser.getText();
   await parser.destroy();

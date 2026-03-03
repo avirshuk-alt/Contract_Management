@@ -10,6 +10,33 @@ import { contractExtractionPayloadSchema } from "@/lib/types/extraction";
 
 const EXTRACTOR_VERSION = "llm-v1";
 
+function emptyCriticalField<T>(value: T) {
+  return { value, confidence: 0, evidence: [] as { quote: string; page?: number }[] };
+}
+
+function ensureCriticalTerms(parsed: unknown): unknown {
+  const o = parsed as Record<string, unknown>;
+  if (o && typeof o === "object" && o.criticalTerms && typeof o.criticalTerms === "object") return parsed;
+  const ct = {
+    paymentTerms: emptyCriticalField<{ summary: string; netDays?: number; rawText?: string } | null>(null),
+    terminationExit: emptyCriticalField<{ summary: string; noticeDays?: number; conditions?: string } | null>(null),
+    penaltiesDamages: emptyCriticalField<{ summary: string; latePayment?: string; breach?: string } | null>(null),
+    renewalTerms: emptyCriticalField<{ summary: string; autoRenewal?: boolean; noticeDays?: number } | null>(null),
+    liabilityIndemnity: emptyCriticalField<{ summary: string; liabilityCap?: string; indemnificationScope?: string } | null>(null),
+  };
+  return { ...o, criticalTerms: ct };
+}
+
+function emptyIdField(value: string | null) {
+  return { value, confidence: 0, evidence: [] as { quote: string; page?: number }[] };
+}
+
+function ensureContractIdentifiers(parsed: unknown): unknown {
+  const o = parsed as Record<string, unknown>;
+  if (o && typeof o === "object" && o.contractIdentifiers && typeof o.contractIdentifiers === "object") return parsed;
+  return { ...o, contractIdentifiers: { contractTitleFromDoc: emptyIdField(null), supplierNameFromDoc: emptyIdField(null), contractValueFromDoc: emptyIdField(null) } };
+}
+
 function getApiKey(): string | undefined {
   return process.env.OPENAI_API_KEY?.trim() || undefined;
 }
@@ -19,42 +46,35 @@ export function hasLlmExtractionConfigured(): boolean {
   return !!getApiKey();
 }
 
-const EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting structured data from MRO (Maintenance, Repair, Operations) supplier contracts. Extract only what is explicitly stated in the text. Do not guess or infer. Use null for any value not found.
+const EXTRACTION_SYSTEM_PROMPT = `You are an expert in MRO (Maintenance, Repair, and Operations) supplier contracts. You understand master service agreements, supply agreements, amendments, pricing, rebates, SLAs, termination, and liability clauses typical in this space.
 
-Return a JSON object with this exact structure. Each extracted field has: value, confidence (0-1), evidence (array of {quote, page?}).
+Your task: Extract structured data from the contract text. For every non-null value you extract, you MUST provide evidence: an array of one or more { "quote": "exact sentence or paragraph from the document that supports this value", "page": number or null }. The quote is the source paragraph from the doc—copy it verbatim so users can cite the contract. Do not guess or infer; use null if not found. Confidence is 0-1 (1 = explicitly stated in the quote).
 
-keyStats: {
-  contractStartDate: {value: "YYYY-MM-DD"|null, confidence: number, evidence: [{quote:string}]},
-  contractEndDate: {value: "YYYY-MM-DD"|null, confidence: number, evidence: []},
-  autoRenewal: {value: {enabled: boolean|null, termMonths?: number, noticeDays?: number}, confidence: number, evidence: []},
-  paymentTerms: {value: {type: "NET_DAYS"|"OTHER"|null, netDays?: number, text?: string}, confidence: number, evidence: []},
-  lengthOfMSAYears: {value: number|null, confidence: number, evidence: []},
-  catalogDiscounts: {value: {summaryPct?: number, byCategory?: [{category:string, discountPct:number|null}]}|null, confidence: number, evidence: []},
-  revenueRebate: {value: {summaryPct?: number, tiers?: [{spendMin?, spendMax?, rebatePct?}]}|null, confidence: number, evidence: []},
-  fillRateGuarantee: {value: {pct?: number, text?: string}|null, confidence: number, evidence: []},
-  consignment: {value: boolean|null, confidence: number, evidence: []},
-  vmi: {value: {offered: boolean|null, markupPct?: number, text?: string}|null, confidence: number, evidence: []},
-  vendingMachines: {value: {offered: boolean|null, cost?: {amount?: number, frequency?: string, text?: string}}|null, confidence: number, evidence: []},
-  inventoryBuyBack: {value: boolean|null, confidence: number, evidence: []},
-  itemLevelPricing: {value: boolean|null, confidence: number, evidence: []},
-  fixedPricingTerm: {value: {months?: number, text?: string}|null, confidence: number, evidence: []},
-  invoicingOptions: {value: {edi?: boolean, pcard?: boolean, perShipment?: boolean, otherText?: string}|null, confidence: number, evidence: []}
-}
+Return ONLY valid JSON with this structure. Every field has: value, confidence, evidence (array of {quote, page?}). For any non-null value, evidence must contain at least one quote from the document.
 
-keyTerms: {
-  sitesCovered: {value: string[]|null, confidence: number, evidence: []},
-  binManagement: {value: {offered: boolean|null, markupText?: string}|null, confidence: number, evidence: []},
-  expeditedService: {value: {offered: boolean|null, termsText?: string}|null, confidence: number, evidence: []},
-  accountManagement: {value: {description?: string}|null, confidence: number, evidence: []},
-  spendDataReports: {value: {frequency?: "MONTHLY"|"QUARTERLY"|"ON_DEMAND"|"OTHER", description?: string}|null, confidence: number, evidence: []},
-  orderingEcommerce: {value: {optionsText?: string}|null, confidence: number, evidence: []}
-}
+contractIdentifiers: (from document text)
+  contractTitleFromDoc: {value: string|null (agreement/contract title as stated in doc), confidence: number, evidence: [{quote: "source paragraph"}]},
+  supplierNameFromDoc: {value: string|null (supplier/vendor name as in doc), confidence: number, evidence: [{quote: "source paragraph"}]},
+  contractValueFromDoc: {value: string|null (contract value/amount if stated, e.g. "USD 1.5M" or raw text), confidence: number, evidence: [{quote: "source paragraph"}]}
+
+keyStats: (each with value, confidence, evidence: [{quote, page?}])
+  contractStartDate, contractEndDate (YYYY-MM-DD or null), autoRenewal, paymentTerms, lengthOfMSAYears, catalogDiscounts, revenueRebate, fillRateGuarantee, consignment, vmi, vendingMachines, inventoryBuyBack, itemLevelPricing, fixedPricingTerm, invoicingOptions
+  (Use same nested value shapes as before; evidence must cite the source paragraph for each.)
+
+keyTerms: sitesCovered, binManagement, expeditedService, accountManagement, spendDataReports, orderingEcommerce (each with value, confidence, evidence)
+
+criticalTerms: (REQUIRED—these 5 high-impact clauses; for each, evidence must include the source paragraph from the doc)
+  paymentTerms: {value: {summary, netDays?, rawText?}|null, confidence, evidence: [{quote: "exact clause or sentence"}]},
+  terminationExit: {value: {summary, noticeDays?, conditions?}|null, confidence, evidence: [{quote: "exact clause"}]},
+  penaltiesDamages: {value: {summary, latePayment?, breach?}|null, confidence, evidence: [{quote: "exact clause"}]},
+  renewalTerms: {value: {summary, autoRenewal?, noticeDays?}|null, confidence, evidence: [{quote: "exact clause"}]},
+  liabilityIndemnity: {value: {summary, liabilityCap?, indemnificationScope?}|null, confidence, evidence: [{quote: "exact clause"}]}
 
 derived: {daysUntilExpiry: number|null, isExpired: boolean|null, paymentTermsDays: number|null, discountDepthScore: number|null, serviceCoverageScore: number|null}
 
-valueCommitments: {initiatives: [{title:string, details?: string, target?: string, cadence?: string}]}|null
+valueCommitments: {initiatives: [{title, details?, target?, cadence?}]}|null
 
-opportunities: [] (leave empty; will be computed separately)
+opportunities: [] (leave empty)
 
 meta: {extractedAt: ISO date string, extractorVersion: "llm-v1", overallConfidence: number 0-1}`;
 
@@ -101,7 +121,9 @@ export async function extractWithLlm(
     }
 
     const parsed = JSON.parse(content) as unknown;
-    const result = contractExtractionPayloadSchema.safeParse(parsed);
+    let withDefaults = ensureCriticalTerms(parsed);
+    withDefaults = ensureContractIdentifiers(withDefaults);
+    const result = contractExtractionPayloadSchema.safeParse(withDefaults);
     if (!result.success) {
       return null;
     }

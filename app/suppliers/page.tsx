@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import type { Supplier } from "@/lib/seed-data";
 import { suppliers, contracts } from "@/lib/seed-data";
 
 function formatCurrency(value: number): string {
@@ -81,16 +82,22 @@ const eventTypeConfig = {
 
 export default function SuppliersPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSupplier, setSelectedSupplier] = useState(suppliers[0]);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(suppliers[0] ?? null);
 
   const filteredSuppliers = suppliers.filter((supplier) =>
     supplier.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // When filtered list changes and selected is not in it, pick first filtered
+  const effectiveSelected =
+    selectedSupplier && filteredSuppliers.some((s) => s.id === selectedSupplier.id)
+      ? selectedSupplier
+      : filteredSuppliers[0] ?? null;
+
   // Get contracts for selected supplier
-  const supplierContracts = contracts.filter(
-    (c) => c.supplierId === selectedSupplier.id
-  );
+  const supplierContracts = effectiveSelected
+    ? contracts.filter((c) => c.supplierId === effectiveSelected.id)
+    : [];
 
   // Calculate aggregate risk
   const avgRiskScore =
@@ -100,6 +107,24 @@ export default function SuppliersPage() {
             supplierContracts.length
         )
       : 0;
+
+  // Empty state: no suppliers (data comes from seed/API; when empty, show message)
+  if (suppliers.length === 0) {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Suppliers</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage supplier relationships and contract portfolios
+          </p>
+        </div>
+        <Card className="bg-card border-border p-8 text-center">
+          <Building2 className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
+          <p className="text-muted-foreground">No suppliers yet. Suppliers are created when you upload contracts.</p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -128,7 +153,7 @@ export default function SuppliersPage() {
           <div className="space-y-2">
             {filteredSuppliers.map((supplier) => {
               const TrendIcon = riskTrendConfig[supplier.riskTrend].icon;
-              const isSelected = selectedSupplier.id === supplier.id;
+              const isSelected = effectiveSelected?.id === supplier.id;
 
               return (
                 <button
@@ -179,6 +204,12 @@ export default function SuppliersPage() {
 
         {/* Supplier details */}
         <div className="lg:col-span-2 space-y-6">
+          {!effectiveSelected ? (
+            <Card className="bg-card border-border p-8 text-center">
+              <p className="text-muted-foreground">No supplier selected.</p>
+            </Card>
+          ) : (
+            <>
           {/* Profile card */}
           <Card className="bg-card border-border">
             <CardHeader className="pb-2">
@@ -188,9 +219,9 @@ export default function SuppliersPage() {
                     <Building2 className="h-7 w-7 text-primary" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl">{selectedSupplier.name}</CardTitle>
+                    <CardTitle className="text-xl">{effectiveSelected.name}</CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      {selectedSupplier.industry}
+                      {effectiveSelected.industry}
                     </p>
                   </div>
                 </div>
@@ -208,7 +239,7 @@ export default function SuppliersPage() {
                     <span className="text-xs text-muted-foreground">Spend</span>
                   </div>
                   <p className="text-lg font-semibold text-foreground">
-                    {formatCurrency(selectedSupplier.spendEstimate)}
+                    {formatCurrency(effectiveSelected.spendEstimate)}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg bg-secondary/50">
@@ -217,7 +248,7 @@ export default function SuppliersPage() {
                     <span className="text-xs text-muted-foreground">Contracts</span>
                   </div>
                   <p className="text-lg font-semibold text-foreground">
-                    {selectedSupplier.contractCount}
+                    {effectiveSelected.contractCount}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg bg-secondary/50">
@@ -230,12 +261,12 @@ export default function SuppliersPage() {
                 <div className="p-3 rounded-lg bg-secondary/50">
                   <div className="flex items-center gap-2 mb-1">
                     {(() => {
-                      const TrendIcon = riskTrendConfig[selectedSupplier.riskTrend].icon;
+                      const TrendIcon = riskTrendConfig[effectiveSelected.riskTrend].icon;
                       return (
                         <TrendIcon
                           className={cn(
                             "h-4 w-4",
-                            riskTrendConfig[selectedSupplier.riskTrend].className
+                            riskTrendConfig[effectiveSelected.riskTrend].className
                           )}
                         />
                       );
@@ -245,10 +276,10 @@ export default function SuppliersPage() {
                   <p
                     className={cn(
                       "text-lg font-semibold",
-                      riskTrendConfig[selectedSupplier.riskTrend].className
+                      riskTrendConfig[effectiveSelected.riskTrend].className
                     )}
                   >
-                    {riskTrendConfig[selectedSupplier.riskTrend].label}
+                    {riskTrendConfig[effectiveSelected.riskTrend].label}
                   </p>
                 </div>
               </div>
@@ -259,21 +290,21 @@ export default function SuppliersPage() {
                   <div>
                     <p className="text-muted-foreground mb-1">Primary Contact</p>
                     <p className="text-foreground font-medium">
-                      {selectedSupplier.primaryContact}
+                      {effectiveSelected.primaryContact}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Email</p>
                     <a
-                      href={`mailto:${selectedSupplier.email}`}
+                      href={`mailto:${effectiveSelected.email}`}
                       className="text-primary hover:underline"
                     >
-                      {selectedSupplier.email}
+                      {effectiveSelected.email}
                     </a>
                   </div>
                   <div className="flex items-start gap-1">
                     <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                    <p className="text-foreground">{selectedSupplier.location}</p>
+                    <p className="text-foreground">{effectiveSelected.location}</p>
                   </div>
                 </div>
               </div>
@@ -287,7 +318,7 @@ export default function SuppliersPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {selectedSupplier.topObligations.map((obligation, index) => (
+                {effectiveSelected.topObligations.map((obligation, index) => (
                   <div
                     key={index}
                     className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border"
@@ -313,7 +344,7 @@ export default function SuppliersPage() {
                 <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
 
                 <div className="space-y-4">
-                  {selectedSupplier.events
+                  {effectiveSelected.events
                     .sort(
                       (a, b) =>
                         new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -349,6 +380,8 @@ export default function SuppliersPage() {
               </div>
             </CardContent>
           </Card>
+            </>
+          )}
         </div>
       </div>
     </div>

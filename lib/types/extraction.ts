@@ -139,6 +139,60 @@ export const keyTermsSchema = z.object({
 });
 export type KeyTerms = z.infer<typeof keyTermsSchema>;
 
+// ----- Contract identifiers (from document; for table views) -----
+export const contractIdentifiersSchema = z.object({
+  contractTitleFromDoc: extractedField(z.string().nullable()),
+  supplierNameFromDoc: extractedField(z.string().nullable()),
+  contractValueFromDoc: extractedField(z.string().nullable()), // e.g. "USD 1.5M" or raw clause text
+});
+export type ContractIdentifiers = z.infer<typeof contractIdentifiersSchema>;
+
+// ----- Critical terms (5 high-impact fields, LLM-extracted) -----
+const criticalPaymentTermsValue = z
+  .object({
+    summary: z.string(),
+    netDays: z.number().nullable().optional(),
+    rawText: z.string().nullable().optional(),
+  })
+  .nullable();
+const criticalTerminationValue = z
+  .object({
+    summary: z.string(),
+    noticeDays: z.number().nullable().optional(),
+    conditions: z.string().nullable().optional(),
+  })
+  .nullable();
+const criticalPenaltiesValue = z
+  .object({
+    summary: z.string(),
+    latePayment: z.string().nullable().optional(),
+    breach: z.string().nullable().optional(),
+  })
+  .nullable();
+const criticalRenewalValue = z
+  .object({
+    summary: z.string(),
+    autoRenewal: z.boolean().nullable().optional(),
+    noticeDays: z.number().nullable().optional(),
+  })
+  .nullable();
+const criticalLiabilityValue = z
+  .object({
+    summary: z.string(),
+    liabilityCap: z.string().nullable().optional(),
+    indemnificationScope: z.string().nullable().optional(),
+  })
+  .nullable();
+
+export const criticalTermsSchema = z.object({
+  paymentTerms: extractedField(criticalPaymentTermsValue),
+  terminationExit: extractedField(criticalTerminationValue),
+  penaltiesDamages: extractedField(criticalPenaltiesValue),
+  renewalTerms: extractedField(criticalRenewalValue),
+  liabilityIndemnity: extractedField(criticalLiabilityValue),
+});
+export type CriticalTerms = z.infer<typeof criticalTermsSchema>;
+
 // ----- Derived (computed only when source exists) -----
 export const derivedSchema = z.object({
   daysUntilExpiry: z.number().nullable(),
@@ -203,6 +257,8 @@ export const contractExtractionPayloadSchema = z.object({
   }),
   keyStats: keyStatsSchema,
   keyTerms: keyTermsSchema,
+  contractIdentifiers: contractIdentifiersSchema,
+  criticalTerms: criticalTermsSchema,
   derived: derivedSchema,
   valueCommitments: valueCommitmentsSchema,
   opportunities: z.array(opportunitySchema),

@@ -2,13 +2,14 @@
 
 /**
  * Dashboard — contract-specific MRO view.
- * Always renders: header, contract selector, KPI row, Key Terms, charts, opportunities.
- * No empty-only state. When 0 contracts, UI-only demo contracts (CONTRACT_DEMO_1, CONTRACT_DEMO_2) are shown in the dropdown.
- * Uploads exist only on /contracts.
+ * When 0 contracts: empty state with link to upload. When 1+ contracts: selector and extracted data.
  */
 
 import { Suspense, useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ContractSelector } from "@/components/dashboard/contract-selector";
 import { DashboardKPICards } from "@/components/dashboard/dashboard-kpi-cards";
 import { DashboardKeyTerms } from "@/components/dashboard/dashboard-key-terms";
@@ -22,17 +23,7 @@ import { DashboardOpportunities } from "@/components/dashboard/dashboard-opportu
 import { DashboardSupplierValueCommitments } from "@/components/dashboard/dashboard-supplier-value-commitments";
 import type { ContractExtractionPayload } from "@/lib/types/extraction";
 import { buildDashboardViewModel } from "@/lib/dashboard-view-model";
-import {
-  CONTRACT_DEMO_1,
-  CONTRACT_DEMO_2,
-  DEMO_CONTRACT_1_PAYLOAD,
-  DEMO_CONTRACT_2_PAYLOAD,
-  DEMO_CONTRACT_OPTIONS,
-  DEMO_CONTRACT_1_SPEND_TREND,
-  DEMO_CONTRACT_2_SPEND_TREND,
-  DEMO_CONTRACT_1_RISK_VS_SAVINGS,
-  DEMO_CONTRACT_2_RISK_VS_SAVINGS,
-} from "@/lib/dashboard-demo-data";
+import { createEmptyExtractionPayload } from "@/lib/services/mro-extraction";
 
 const STUB_EXTRACTOR_VERSION = "stub-v1";
 
@@ -51,23 +42,9 @@ interface ContractDetail {
   extraction: ContractExtractionPayload | null;
 }
 
-function isDemoContractId(id: string): id is typeof CONTRACT_DEMO_1 | typeof CONTRACT_DEMO_2 {
-  return id === CONTRACT_DEMO_1 || id === CONTRACT_DEMO_2;
-}
-
 function isStubOrMissingExtraction(payload: ContractExtractionPayload | null): boolean {
   if (!payload) return true;
   return payload.meta?.extractorVersion === STUB_EXTRACTOR_VERSION || payload.meta?.overallConfidence === 0;
-}
-
-function getDemoPayloadForId(id: string): ContractExtractionPayload {
-  return id === CONTRACT_DEMO_2 ? DEMO_CONTRACT_2_PAYLOAD : DEMO_CONTRACT_1_PAYLOAD;
-}
-
-function getDemoChartOverrides(id: string) {
-  const spendTrend = id === CONTRACT_DEMO_2 ? DEMO_CONTRACT_2_SPEND_TREND : DEMO_CONTRACT_1_SPEND_TREND;
-  const riskVsSavings = id === CONTRACT_DEMO_2 ? DEMO_CONTRACT_2_RISK_VS_SAVINGS : DEMO_CONTRACT_1_RISK_VS_SAVINGS;
-  return { spendTrend, riskVsSavings };
 }
 
 function DashboardContent() {
@@ -96,7 +73,6 @@ function DashboardContent() {
   }, []);
 
   const fetchContractDetail = useCallback(async (id: string) => {
-    if (isDemoContractId(id)) return;
     setLoadingDetail(true);
     try {
       const res = await fetch(`/api/contracts/${id}`);
@@ -117,20 +93,11 @@ function DashboardContent() {
     fetchContracts();
   }, [fetchContracts]);
 
-  const displayList: ContractListItem[] =
-    contracts.length > 0
-      ? contracts
-      : DEMO_CONTRACT_OPTIONS.map((o) => ({
-          id: o.id,
-          contractName: o.contractName,
-          supplierName: o.supplierName,
-          uploadedAt: o.uploadedAt,
-        }));
-
+  const displayList = contracts;
   const effectiveId =
     contractIdFromUrl && displayList.some((c) => c.id === contractIdFromUrl)
       ? contractIdFromUrl
-      : displayList[0]?.id ?? CONTRACT_DEMO_1;
+      : displayList[0]?.id ?? null;
 
   useEffect(() => {
     if (effectiveId && !contractIdFromUrl) {
@@ -140,36 +107,42 @@ function DashboardContent() {
         `/dashboard?contractId=${encodeURIComponent(effectiveId)}`
       );
     }
-    if (effectiveId && !isDemoContractId(effectiveId)) {
+    if (effectiveId) {
       fetchContractDetail(effectiveId);
-    } else if (isDemoContractId(effectiveId)) {
+    } else {
+      setSelectedContract(null);
       setLoadingDetail(false);
     }
   }, [effectiveId, contractIdFromUrl, fetchContractDetail]);
 
-  let payload: ContractExtractionPayload;
-  let isDemoSource: boolean;
-  let showExtractionPendingBanner: boolean;
-
-  if (isDemoContractId(effectiveId)) {
-    payload = getDemoPayloadForId(effectiveId);
-    isDemoSource = true;
-    showExtractionPendingBanner = false;
-  } else if (selectedContract?.extraction && !isStubOrMissingExtraction(selectedContract.extraction)) {
-    payload = selectedContract.extraction;
-    isDemoSource = false;
-    showExtractionPendingBanner = false;
-  } else {
-    payload = getDemoPayloadForId(CONTRACT_DEMO_1);
-    isDemoSource = true;
-    showExtractionPendingBanner = !!selectedContract && !selectedContract.extraction;
+  // Empty state: no contracts
+  if (!loadingList && displayList.length === 0) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[50vh] gap-4">
+        <FileText className="h-16 w-16 text-muted-foreground/40" />
+        <h2 className="text-xl font-semibold text-foreground">No contracts yet</h2>
+        <p className="text-muted-foreground text-center max-w-md">
+          Upload a contract (PDF or Word) from the Contracts page to see the MRO dashboard and extracted terms.
+        </p>
+        <Link href="/contracts">
+          <Button>Go to Contracts</Button>
+        </Link>
+      </div>
+    );
   }
 
-  const chartOverrides = isDemoContractId(effectiveId) ? getDemoChartOverrides(effectiveId) : undefined;
+  const payload: ContractExtractionPayload =
+    selectedContract?.extraction && !isStubOrMissingExtraction(selectedContract.extraction)
+      ? selectedContract.extraction
+      : createEmptyExtractionPayload();
+
+  const isDemoSource = !selectedContract?.extraction || isStubOrMissingExtraction(selectedContract?.extraction ?? null);
+  const showExtractionPendingBanner = !!selectedContract && isStubOrMissingExtraction(selectedContract.extraction ?? null);
+
   const viewModel = buildDashboardViewModel(payload, {
     isDemoSource,
     showExtractionPendingBanner,
-    chartOverrides,
+    chartOverrides: undefined,
   });
 
   return (
@@ -197,11 +170,11 @@ function DashboardContent() {
 
       {showExtractionPendingBanner && (
         <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm text-amber-800 dark:text-amber-200">
-          Extraction pending — demo values shown.
+          Extraction pending — run extraction on this contract to see full data.
         </div>
       )}
 
-      {!isDemoContractId(effectiveId) && loadingDetail && !selectedContract && (
+      {effectiveId && loadingDetail && !selectedContract && (
         <p className="text-sm text-muted-foreground">Loading contract…</p>
       )}
 
